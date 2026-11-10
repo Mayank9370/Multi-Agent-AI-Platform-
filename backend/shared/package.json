@@ -1,0 +1,10 @@
+{
+  "name": "@agentflow/shared",
+  "version": "1.0.0",
+  "description": "Shared utilities imported by all AgentFlow backend services via relative paths.",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "jsonwebtoken": "^9.0.3"
+  }
+}

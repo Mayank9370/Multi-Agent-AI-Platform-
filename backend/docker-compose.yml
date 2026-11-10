@@ -1,0 +1,172 @@
+services:
+  # =========================================================
+  # MongoDB
+  # =========================================================
+  mongodb:
+    image: mongo:7
+    container_name: agentflow_mongodb
+
+    restart: unless-stopped
+
+    ports:
+      - "27017:27017"
+
+    volumes:
+      - mongodb_data:/data/db
+
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'mongosh --quiet --eval "db.adminCommand(''ping'').ok"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =========================================================
+  # Redis
+  # =========================================================
+  redis:
+    image: redis:7-alpine
+    container_name: agentflow_redis
+
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # =========================================================
+  # Auth Service
+  # =========================================================
+  auth:
+    build:
+      context: .
+      dockerfile: ./services/auth/Dockerfile
+
+    container_name: agentflow_auth
+
+    restart: unless-stopped
+
+    env_file:
+      - ./services/auth/.env
+
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+
+      # Docker service names are used for
+      # container-to-container communication.
+      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/agentflow}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+    ports:
+      - "8001:8001"
+
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q --spider http://localhost:8001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # =========================================================
+  # API Gateway
+  # =========================================================
+  gateway:
+    build:
+      context: .
+      dockerfile: ./gateway/Dockerfile
+
+    container_name: agentflow_gateway
+
+    restart: unless-stopped
+
+    env_file:
+      - ./gateway/.env
+
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+
+      # IMPORTANT:
+      # Inside Docker, localhost means the gateway container itself.
+      # Therefore Auth must be referenced using the service name.
+      AUTH_SERVICE: http://auth:8001
+
+      # Chat service is not implemented yet.
+      CHAT_SERVICE: http://chat:8002
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      auth:
+        condition: service_healthy
+
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q --spider http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # =========================================================
+  # Chat Service
+  # =========================================================
+  # Currently your chat service is empty/not implemented.
+  #
+  # DO NOT enable this service until you have:
+  #   backend/services/chat/Dockerfile
+  #   backend/services/chat/package.json
+  #   backend/services/chat/index.js
+  #
+  # chat:
+  #   build:
+  #     context: .
+  #     dockerfile: ./services/chat/Dockerfile
+  #
+  #   container_name: agentflow_chat
+  #
+  #   restart: unless-stopped
+  #
+  #   env_file:
+  #     - ./services/chat/.env
+  #
+  #   ports:
+  #     - "8002:8002"
+  #
+  #   healthcheck:
+  #     test:
+  #       [
+  #         "CMD-SHELL",
+  #         "wget -q --spider http://localhost:8002/health || exit 1"
+  #       ]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
+
+# ===========================================================
+# Persistent Volumes
+# ===========================================================
+volumes:
+  mongodb_data:
+    name: agentflow_mongodb_data
+
+  redis_data:
+    name: agentflow_redis_data
